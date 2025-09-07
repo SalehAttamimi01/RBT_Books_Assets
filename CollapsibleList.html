@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+<link rel="stylesheet" href="jquery.mobile-1.4.5.min.css">
+<script src="jquery-1.11.3.min.js"></script>
+<script src="jquery.mobile-1.4.5.min.js"></script>
+<style>
+.ui-page{
+    background-color: #ffffff !important; 
+}
+</style>
+</head>
+<body>
+				
+  <div class="ui-content" data-role="collapsibleset" id="set"> </div>
+
+<script>
+        $(document).ready(function () {
+            var collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+            function sortLists() {
+                $(".sortable").each(function () {
+                    let $ul = $(this);
+                    let $lis = $ul.children("li").get();
+
+                    // Natural sort using Intl.Collator
+                    $lis.sort(function (a, b) {
+                        return collator.compare($(a).text(), $(b).text());
+                    });
+
+                    // Append sorted items back to the list
+                    $.each($lis, function (index, li) {
+                        $ul.append(li);
+                    });
+
+                    // Refresh jQuery Mobile ListView
+                    $ul.listview("refresh");
+                });
+            }
+
+            // Automatically sort on page load
+            sortLists();
+        });
+</script>
+	
+<script>
+	var books = window.AppInventor.getWebViewString().split(",");
+	var countList = 0;
+	const booksCategories = [];
+	var content = "";
+    for (let nextId = 0; nextId < books.length; nextId++) {	
+    	if(books[nextId].includes(".pdf")) {
+			content = "<li><a href='#'>" + books[nextId] + "</a></li>";
+			document.getElementById("ListParent"+countList).insertAdjacentHTML('beforeend', content);
+		} else {
+			content = "<div data-role='collapsible' data-theme='b'> <h4>" + books[nextId] + "</h4><ul data-role='listview' data-filter='true' class='sortable' id='ListParent"+nextId+"'> </ul></div>";
+			document.getElementById("set").insertAdjacentHTML('beforeend', content);
+			countList = nextId;
+			booksCategories.push(books[nextId]);
+		}	
+    }
+	
+	$(document).ready(function () {
+            $("ul li").click(function () {
+				var $collapsible = $(this).closest(".ui-collapsible");
+                var category = booksCategories[$collapsible.index()];
+				//var categoryIndex = books.indexOf(category);
+                var subItem = $(this).text().trim(); //this will show the name of clicked item
+				//var subItemIndex = $(this).index()+categoryIndex+2; //this will show the real index of books arraylist	
+				var slicedList = books.slice(books.indexOf(category), books.length+1);
+				var BookIndex = books.length - slicedList.length + slicedList.indexOf(subItem) + 1;
+				window.AppInventor.setWebViewString(category+","+subItem+","+BookIndex);
+            });	
+    });
+</script>
+</body>
+</html>
