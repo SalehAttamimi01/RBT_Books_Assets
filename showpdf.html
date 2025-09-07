@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+<title>SHOWPDF</title>
+<script src="pdf.js"></script>
+<style>
+  body { background-color: #404448; margin:0; overflow:auto; }
+  #the-canvas { display:block; margin: 60px auto; background:#fff; }
+  #controls {
+    position: fixed;
+    top: 5px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6);
+    padding: 8px 14px;
+    border-radius: 12px;
+    z-index: 100;
+    color: white;
+    font-family: Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    white-space: nowrap;
+  }
+  #controls button {
+    background: #ffffff;
+    border: none;
+    border-radius: 6px;
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  }
+  #controls button:hover {
+    background: #007bff;
+    color: #fff;
+  }
+  #controls button:active {
+    transform: scale(0.9);
+  }
+  #pageInfo {
+    font-size: 14px;
+    font-weight: bold;
+    color: #fff;
+    padding: 0 6px;
+  }
+  /* Spinner */
+  .spinner {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(0,123,255,0.2);
+    border-top: 4px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    z-index: 200;
+    display: none;
+  }
+  @keyframes spin {
+    0%   { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+  }
+</style>
+</head>
+<body>
+<div id="controls">
+  <button id="prevBtn" onclick="prevPage()">◀</button>
+  <button id="nextBtn" onclick="nextPage()">▶</button>
+  <button id="zoomOutBtn" onclick="zoomOut()">-</button>
+  <button id="zoomInBtn" onclick="zoomIn()">+</button>
+  <span id="pageInfo">Page 1</span>
+</div>
+
+<div id="loadingSpinner" class="spinner"></div>
+<canvas id="the-canvas"></canvas>
+
+<script>
+var wvList = window.AppInventor.getWebViewString().split(" || ");
+
+// WebViewString = quality || base64PDF
+var quality = parseFloat(wvList[0]) || 1.5;
+var pdfData = atob(wvList[1]);
+
+var pdfjsLib = window['pdfjs-dist/build/pdf'];
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.js';
+
+var pdfDoc = null;
+var currentPage = 1;
+var zoomScale = 1.0;
+var canvas = document.getElementById('the-canvas');
+var context = canvas.getContext('2d');
+var renderTask = null;
+
+function setControlsEnabled(state) {
+  document.getElementById("prevBtn").disabled = !state;
+  document.getElementById("nextBtn").disabled = !state;
+  document.getElementById("zoomInBtn").disabled = !state;
+  document.getElementById("zoomOutBtn").disabled = !state;
+}
+
+function renderPage(num) {
+  setControlsEnabled(false);
+  document.getElementById("loadingSpinner").style.display = "block";
+
+  // Cancel unfinished render
+  if (renderTask) {
+    renderTask.cancel();
+    renderTask = null;
+  }
+
+  pdfDoc.getPage(num).then(function(page) {
+    var deviceWidth = window.innerWidth;
+    var deviceHeight = window.innerHeight;
+
+    var viewport = page.getViewport({ scale: 1 });
+    var fitScale = (deviceWidth < deviceHeight)
+      ? deviceWidth / viewport.width
+      : deviceHeight / viewport.height;
+
+    var finalScale = fitScale * zoomScale;
+    viewport = page.getViewport({ scale: finalScale });
+
+    var outputScale = quality;
+    canvas.width = viewport.width * outputScale;
+    canvas.height = viewport.height * outputScale;
+    canvas.style.width = viewport.width + "px";
+    canvas.style.height = viewport.height + "px";
+
+    var transform = [outputScale, 0, 0, outputScale, 0, 0];
+    var renderContext = {
+      canvasContext: context,
+      viewport: viewport,
+      transform: transform
+    };
+
+    renderTask = page.render(renderContext);
+
+    renderTask.promise.then(function() {
+      renderTask = null;
+      setControlsEnabled(true);
+      document.getElementById("loadingSpinner").style.display = "none";
+    }).catch(function(err) {
+      if (err.name !== "RenderingCancelledException") {
+        console.error("Render error:", err);
+      }
+      setControlsEnabled(true);
+      document.getElementById("loadingSpinner").style.display = "none";
+    });
+
+    document.getElementById("pageInfo").textContent =
+      "Page " + num + " / " + pdfDoc.numPages;
+  });
+}
+
+pdfjsLib.getDocument({data: pdfData}).promise.then(function(pdf) {
+  pdfDoc = pdf;
+  window.AppInventor.setWebViewString(pdf.numPages);
+  renderPage(currentPage);
+});
+
+// Navigation
+function prevPage() {
+  if (currentPage <= 1) return;
+  currentPage--;
+  renderPage(currentPage);
+}
+function nextPage() {
+  if (currentPage >= pdfDoc.numPages) return;
+  currentPage++;
+  renderPage(currentPage);
+}
+
+// Zoom
+function zoomIn() {
+  zoomScale *= 1.25;
+  if (zoomScale > 3.0) zoomScale = 3.0;
+  renderPage(currentPage);
+}
+function zoomOut() {
+  zoomScale /= 1.25;
+  if (zoomScale < 1.0) zoomScale = 1.0;
+  renderPage(currentPage);
+}
+
+// Re-render on rotation/resize
+window.addEventListener("resize", function() {
+  if (pdfDoc) renderPage(currentPage);
+});
+</script>
+</body>
+</html>
